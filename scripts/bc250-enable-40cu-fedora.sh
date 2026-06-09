@@ -252,25 +252,15 @@ build_module() {
 
 install_module() {
     local built="$1"
-    local target="${MODPATH}"
-
-    if [ -f "${target}.zst" ]; then
-        target="${target}.zst"
-    elif [ ! -f "$target" ]; then
-        target="${target}.zst"
-    fi
+    local target="$(ls "${MODPATH}"* 2>/dev/null | grep -E '\.ko(\.xz)?$' | head -n 1)"
 
     if [ -f "$target" ] && [ ! -f "${target}${BACKUP_SUFFIX}" ]; then
         info "Backing up original to ${target}${BACKUP_SUFFIX}"
-        cp "$target" "${target}${BACKUP_SUFFIX}"
+        mv "$target" "${target}${BACKUP_SUFFIX}"
     fi
 
-    if [ "${target%.zst}" != "$target" ]; then
-        info "Compressing and installing module..."
-        zstd -f "$built" -o "$target"
-    else
-        cp "$built" "$target"
-    fi
+    info "Compressing and installing module..."
+    zstd -f "$built" -o "${MODPATH}.zst"
 
     depmod -a "$KVER"
     info "Module installed at ${target}"
@@ -311,11 +301,17 @@ do_disable() {
 
 do_restore() {
     local target="${MODPATH}"
-    if [ -f "${target}.zst" ]; then target="${target}.zst"; fi
     local backup
-    backup="$(ls -1 "${target}.bc250-backup-"* 2>/dev/null | head -1)"
+    backup="$(ls -1 "${target}"*".bc250-backup-"* 2>/dev/null | head -1)"
     [ -n "$backup" ] || die "No backup found"
-    cp "$backup" "$target"
+
+    # Wipe the patched module(s)
+    rm -f "${target}.zst" "${target}.xz" "${target}"
+
+    # Restore the original
+    local orig_name="${backup%.bc250-backup-*}"
+    mv "$backup" "$orig_name"
+
     rm -f "$CONF40"
     depmod -a "$KVER"
     info "Original module restored. Reboot to apply."
